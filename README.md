@@ -38,7 +38,7 @@ Use the prebuilt image in `bin/`:
 esptool.py --chip esp32s3 write_flash 0x0 bin/typer_FULL_flash_at_0x0.bin
 ```
 
-Or a browser flasher (Chrome): flash `bin/typer_FULL_flash_at_0x0.bin` at offset `0x0`.
+Or a browser flasher (https://adafruit.github.io/Adafruit_WebSerial_ESPTool/): flash `bin/typer_FULL_flash_at_0x0.bin` at offset `0x0`.
 If it won't enter flash mode: hold **BOOT**, tap **RESET**, release BOOT.
 **After flashing, fully unplug and replug** — a reset alone won't re-enumerate USB.
 
