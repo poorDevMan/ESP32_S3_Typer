@@ -7,9 +7,13 @@ screen shows the connection info and live **line X / Y** progress.
 
 Useful for pasting into places that block paste: remote/KVM consoles, locked-down
 fields, BIOS/recovery shells, etc.
-<img width="680" height="560" alt="web_typer" src="https://github.com/user-attachments/assets/59e14ad7-8a0c-4c62-8d60-bf6afa059843" />
-<img width="1740" height="520" alt="lcd_states" src="https://github.com/user-attachments/assets/e30d15bf-fc38-4171-8964-9d1ffa5dd019" />
-<img width="460" height="560" alt="web_setup" src="https://github.com/user-attachments/assets/e25e8ad1-824a-48f8-8550-36e93db5c947" />
+<p align="center">
+  <img height="380" alt="web_typer" src="https://github.com/user-attachments/assets/59e14ad7-8a0c-4c62-8d60-bf6afa059843" />
+  <img height="380" alt="web_setup" src="https://github.com/user-attachments/assets/e25e8ad1-824a-48f8-8550-36e93db5c947" />
+</p>
+<p align="center">
+  <img width="800" alt="lcd_states" src="https://github.com/user-attachments/assets/e30d15bf-fc38-4171-8964-9d1ffa5dd019" />
+</p>
 
 
 ## Features
