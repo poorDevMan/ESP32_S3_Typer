@@ -3,11 +3,7 @@ name: Build firmware
 on:
   push:
     branches: [main]
-    paths: ["firmware/**", ".github/workflows/build.yml"]
-  pull_request:
   workflow_dispatch:
-  release:
-    types: [published]
 
 permissions:
   contents: write
@@ -32,18 +28,15 @@ jobs:
             -b "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc" \
             --export-binaries firmware/esp32_keystroke_typer
 
-      - name: Collect binaries
+      - name: Collect binary
         run: |
           mkdir out
           cp firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3/*.ino.merged.bin out/esp32_typer_FULL_flash_at_0x0.bin
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: firmware
-          path: out/*.bin
-
-      - name: Attach to release
-        if: github.event_name == 'release'
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: latest
+          name: Latest firmware
+          body: Flash `esp32_typer_FULL_flash_at_0x0.bin` at offset 0x0.
           files: out/*.bin
