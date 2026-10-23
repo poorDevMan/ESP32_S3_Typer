@@ -35,9 +35,7 @@ jobs:
       - name: Collect binaries
         run: |
           mkdir out
-          B=firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3
-          cp $B/*.ino.merged.bin out/typer_FULL_flash_at_0x0.bin
-          cp $B/esp32_keystroke_typer.ino.bin out/typer_app_flash_at_0x10000.bin
+          cp firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3/*.ino.merged.bin out/esp32_typer_FULL_flash_at_0x0.bin
 
       - uses: actions/upload-artifact@v4
         with:
