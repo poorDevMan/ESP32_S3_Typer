@@ -31,12 +31,13 @@ jobs:
       - name: Collect binary
         run: |
           mkdir out
-          cp firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3/*.ino.merged.bin out/esp32_typer_FULL_flash_at_0x0.bin
+          cp firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3/*.ino.merged.bin out/esp32_typer_v1.${{ github.run_number }}_FULL_flash_at_0x0.bin
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest firmware
-          body: Flash `esp32_typer_FULL_flash_at_0x0.bin` at offset 0x0.
+          tag_name: v1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: v1.${{ github.run_number }}
+          body: Flash the `.bin` at offset 0x0.
           files: out/*.bin
