@@ -1,0 +1,43 @@
+name: Build firmware
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install core and libraries
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "Adafruit GFX Library" "Adafruit ST7735 and ST7789 Library"
+
+      - name: Compile
+        run: |
+          arduino-cli compile \
+            -b "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc" \
+            --export-binaries firmware/esp32_keystroke_typer
+
+      - name: Collect binary
+        run: |
+          mkdir out
+          cp firmware/esp32_keystroke_typer/build/esp32.esp32.esp32s3/*.ino.merged.bin out/esp32_typer_v1.${{ github.run_number }}_FULL_flash_at_0x0.bin
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: v1.${{ github.run_number }}
+          body: Flash the `.bin` at offset 0x0.
+          files: out/*.bin
