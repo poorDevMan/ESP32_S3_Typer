@@ -180,10 +180,21 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
  #status{min-height:20px;font-size:14px;color:#9ca3af}
  label{font-size:14px;color:#9ca3af}
  a{color:#60a5fa;font-size:13px}
+ .cb{flex-wrap:wrap;gap:8px}
+ .cb button{flex:0 0 auto;padding:8px 14px;font-size:13px}
+ .cb button.x{padding:8px 10px;background:#4b1d1d}
+ #cf{display:none;flex-wrap:wrap;gap:8px}
+ #cf input[type=text]{background:#0b0c0f;color:#eee;border:1px solid #333;border-radius:8px;padding:8px;min-width:0}
+ #cn{width:90px}
+ #ct{flex:1;min-width:140px}
+ #cf button{padding:8px 14px;font-size:13px}
  .credit{color:#5b616e;font-size:12px;margin-top:14px}
  .credit b{color:#9ca3af}
 </style></head><body>
 <h1>ESP32 Keystroke Typer</h1>
+<div class="row cb" id="cb"></div>
+<div class="row cb" id="cb2"></div>
+<div class="row" id="cf"><input type="text" id="cn" placeholder="Name"><input type="text" id="ct" placeholder="Text to type"><label><input type="checkbox" id="ce" checked> Enter</label><button class="sec" onclick="ad()">Save</button></div>
 <div class="ed"><div class="g" id="g">1</div><textarea id="t" spellcheck="false" wrap="off" placeholder="Paste text or code here..."></textarea></div>
 <div class="row"><label>Speed</label><input type="range" id="d" min="0" max="40" value="8"><span id="dv">8ms/char</span></div>
 <div class="row"><button class="sec" onclick="clr()">Clear</button><button id="b" onclick="send()">Send to Device</button><button id="b2" onclick="send(1)">Send + Enter</button></div>
@@ -197,14 +208,26 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
  t.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=t.selectionStart,x=t.selectionEnd;t.value=t.value.slice(0,s)+'\t'+t.value.slice(x);t.selectionStart=t.selectionEnd=s+1;gut();}});
  gut();
  function clr(){t.value='';gut();document.getElementById('status').textContent='Cleared.';t.focus();}
- async function send(en){
-   const v=t.value+(en?'\n':''),b=document.getElementById('b'),b2=document.getElementById('b2'),s=document.getElementById('status');
-   if(!t.value){s.textContent='Nothing to send.';return;}
-   b.disabled=b2.disabled=true;s.textContent='Typing '+v.length+' chars... watch the screen.';
+ async function tx(v){
+   const s=document.getElementById('status'),bs=document.querySelectorAll('button');
+   bs.forEach(x=>x.disabled=true);s.textContent='Typing '+v.length+' chars... watch the screen.';
    try{const r=await fetch('/type',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({text:v,delay:d.value})});s.textContent=await r.text();}
    catch(e){s.textContent='Error: '+e;}
-   b.disabled=b2.disabled=false;
+   bs.forEach(x=>x.disabled=false);
  }
+ function send(en){if(!t.value){document.getElementById('status').textContent='Nothing to send.';return;}tx(t.value+(en?'\n':''));}
+ const CB=[['LOAD','LOAD "TXT:NS2"'],['RUN','RUN'],['REMOVE','REMOVE NSR,&H60000000,&H3FFFFFFF']];
+ let cu=[];
+ function sv(){fetch('/custom',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({list:JSON.stringify(cu)})}).then(r=>{if(!r.ok)document.getElementById('status').textContent='Could not save (too many buttons?)';}).catch(()=>{});}
+ function mk(c,n,v,e){const b=document.createElement('button');b.className='sec';b.textContent=n;b.onclick=()=>tx(v+(e?'\n':''));c.appendChild(b);}
+ function rb(){const c=document.getElementById('cb'),c2=document.getElementById('cb2');c.innerHTML=c2.innerHTML='';
+   CB.forEach(x=>mk(c,x[0],x[1],1));
+   cu.forEach((x,i)=>{const h=i<1?c:c2;mk(h,x.n,x.t,x.e);const r=document.createElement('button');r.className='sec x';r.textContent='x';r.title='Delete';r.onclick=()=>{cu.splice(i,1);sv();rb();};h.appendChild(r);});
+   if(cu.length<5){const a=document.createElement('button');a.className='sec';a.textContent='+ Custom';a.onclick=()=>{const f=document.getElementById('cf');f.style.display=f.style.display==='flex'?'none':'flex';};(cu.length<1?c:c2).appendChild(a);}}
+ function ad(){const n=document.getElementById('cn'),x=document.getElementById('ct'),e=document.getElementById('ce');
+   if(!n.value||!x.value||cu.length>=5)return;cu.push({n:n.value,t:x.value,e:e.checked});sv();n.value=x.value='';document.getElementById('cf').style.display='none';rb();}
+ rb();
+ fetch('/custom').then(r=>r.json()).then(j=>{if(Array.isArray(j)){cu=j;rb();}}).catch(()=>{});
 </script></body></html>
 )HTML";
 
@@ -301,6 +324,22 @@ void handleType() {
   server.send(200, "text/plain", "Typed " + String(text.length()) + " characters.");
 }
 
+void handleCustomGet() {
+  prefs.begin("buttons", true);
+  String j = prefs.getString("list", "[]");
+  prefs.end();
+  server.send(200, "application/json", j);
+}
+
+void handleCustomSave() {
+  String j = server.arg("list");
+  if (j.length() > 3500) { server.send(400, "text/plain", "Too large"); return; }
+  prefs.begin("buttons", false);
+  prefs.putString("list", j);
+  prefs.end();
+  server.send(200, "text/plain", "ok");
+}
+
 void handleSave() {
   String s = server.arg("ssid");
   String p = server.arg("pass");
@@ -394,6 +433,8 @@ void setup() {
   server.on("/wifi", handleWifiPage);
   server.on("/scan", handleScan);
   server.on("/type", HTTP_POST, handleType);
+  server.on("/custom", HTTP_GET, handleCustomGet);
+  server.on("/custom", HTTP_POST, handleCustomSave);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/forget", handleForget);
   server.onNotFound(handleNotFound);
