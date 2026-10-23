@@ -80,4 +80,4 @@ Made by **poordevman**.
 
 ## License
 
-MIT (add a LICENSE file before publishing if you want).
+MIT. See [LICENSE](LICENSE).
