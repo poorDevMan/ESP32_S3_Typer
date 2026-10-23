@@ -78,7 +78,6 @@ firmware/esp32_keystroke_typer/   Arduino sketch (.ino)
 web/typer_controller.html         PC-side controller page
 test/hid_test_characters.txt      character/indent self-test
 bin/                              prebuilt flashable images
-docs/CLAUDE_CONTEXT.md            project handoff / decision log
 docs/typer_mock_preview.html      offline UI mock
 ```
 
