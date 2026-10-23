@@ -186,7 +186,7 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
 <h1>ESP32 Keystroke Typer</h1>
 <div class="ed"><div class="g" id="g">1</div><textarea id="t" spellcheck="false" wrap="off" placeholder="Paste text or code here..."></textarea></div>
 <div class="row"><label>Speed</label><input type="range" id="d" min="0" max="40" value="8"><span id="dv">8ms/char</span></div>
-<div class="row"><button id="b" onclick="send()">Send to Device</button><button class="sec" onclick="clr()">Clear</button></div>
+<div class="row"><button class="sec" onclick="clr()">Clear</button><button class="sec" onclick="pst()">Paste</button><button id="b" onclick="send()">Send to Device</button></div>
 <div id="status">Focus the target window before sending.</div>
 <p class="credit">Made by <b>poordevman</b> &middot; <a href="/wifi">WiFi settings</a></p>
 <script>
@@ -196,6 +196,9 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
  t.addEventListener('input',gut);t.addEventListener('scroll',()=>g.scrollTop=t.scrollTop);
  t.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=t.selectionStart,x=t.selectionEnd;t.value=t.value.slice(0,s)+'\t'+t.value.slice(x);t.selectionStart=t.selectionEnd=s+1;gut();}});
  gut();
+ async function pst(){const s=document.getElementById('status');t.focus();
+   try{const x=await navigator.clipboard.readText();t.setRangeText(x,t.selectionStart,t.selectionEnd,'end');gut();s.textContent='Pasted.';}
+   catch(e){s.textContent='Press Ctrl+V to paste (browser blocks the button on http).';}}
  function clr(){t.value='';gut();document.getElementById('status').textContent='Cleared.';t.focus();}
  async function send(){
    const v=t.value,b=document.getElementById('b'),s=document.getElementById('status');
