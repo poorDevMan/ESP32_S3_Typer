@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 Typer Controller</title>
+<style>
+  :root{--bg:#0e0f12;--panel:#15171c;--border:#2a2d35;--txt:#e7e9ee;--muted:#9aa1ad;--accent:#3b82f6;color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);
+    display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;width:460px;max-width:94vw}
+  h1{font-size:15px;margin:0 0 4px}
+  .tag{font-size:12px;color:var(--muted);margin-bottom:14px}
+  input[type=text]{width:100%;background:#0b0c0f;color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px}
+  .row{display:flex;align-items:center;gap:10px;margin:12px 0}
+  label{font-size:13px;color:var(--muted);min-width:52px}
+  input[type=range]{flex:1;accent-color:var(--accent)}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:12px;font-size:15px;cursor:pointer;flex:1}
+  button:disabled{opacity:.5;cursor:default}
+  #status{min-height:18px;font-size:13px;color:var(--muted);margin-top:4px}
+  .warn{font-size:12px;color:#f0b429;margin-top:10px;line-height:1.45}
+
+  /* code editor with line numbers */
+  .editor{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#0b0c0f;height:260px;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:19px}
+  .gutter{padding:10px 8px 10px 10px;text-align:right;color:#5b616e;background:#0a0b0e;border-right:1px solid var(--border);
+    white-space:pre;overflow:hidden;user-select:none;min-width:40px}
+  #t{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(--txt);padding:10px;
+    white-space:pre;overflow:auto;font:inherit;tab-size:4;-moz-tab-size:4}
+
+  .lcdwrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .bezel{background:#000;border:6px solid #23262e;border-radius:10px;padding:8px}
+  .lcd{width:320px;height:160px;background:#000;position:relative;font-family:"Courier New",monospace;overflow:hidden}
+  .lcd .bar{position:absolute;left:0;right:0;top:0;height:26px;background:#0b48c4;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;letter-spacing:1px}
+  .lcd .addr{position:absolute;left:4px;top:34px;color:#22d3ee;font-size:15px}
+  .lcd .ip{position:absolute;left:4px;top:54px;color:#28d17c;font-size:15px}
+  .lcd .stat{position:absolute;left:4px;top:82px;color:#ffe14d;font-size:24px;font-weight:700}
+  .lcd .pbox{position:absolute;left:4px;right:4px;top:122px;height:28px;border:2px solid #fff}
+  .lcd .pfill{position:absolute;left:2px;top:2px;bottom:2px;width:0;background:#0b48c4;transition:width .05s linear}
+  .note{font-size:12px;color:var(--muted);max-width:320px;text-align:center}
+</style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>ESP32 Keystroke Typer</h1>
+    <div class="tag">Sends text/code to the dongle, which types it into the focused window.</div>
+    <div class="row">
+      <label>Device</label>
+      <input type="text" id="host" value="esptype.local" spellcheck="false">
+    </div>
+
+    <div class="editor">
+      <div class="gutter" id="gutter">1</div>
+      <textarea id="t" spellcheck="false" wrap="off" placeholder="Paste code here...">def hello(name):
+    if name:
+        print(f"Hi, {name}!")   # indented
+    return True</textarea>
+    </div>
+
+    <div class="row">
+      <label>Speed</label>
+      <input type="range" id="d" min="0" max="40" value="8">
+      <span id="dv" style="color:var(--muted);font-size:13px">8ms/char</span>
+    </div>
+    <div class="row"><button id="b">Send to Device</button></div>
+    <div id="status">Focus the target window on the PC the dongle is plugged into, then Send.</div>
+    <div class="warn">Open this file by double-clicking it (file://) so it can reach the dongle over http. Typing assumes a US keyboard layout on the target PC. If pasting into an auto-indenting editor, turn off auto-indent or type into a plain editor first — otherwise indentation can double up.</div>
+  </div>
+
+  <div class="lcdwrap">
+    <div class="bezel">
+      <div class="lcd">
+        <div class="bar">ESP32 Typer</div>
+        <div class="addr">esptype.local</div>
+        <div class="ip" id="lip">--</div>
+        <div class="stat" id="lstat">Ready</div>
+        <div class="pbox"><div class="pfill" id="lfill"></div></div>
+      </div>
+    </div>
+    <div class="note">Simulated LCD mirror. The real dongle screen shows the same line progress.</div>
+  </div>
+
+<script>
+  const t=document.getElementById('t'),d=document.getElementById('d'),dv=document.getElementById('dv');
+  const b=document.getElementById('b'),status=document.getElementById('status'),host=document.getElementById('host');
+  const gutter=document.getElementById('gutter');
+  const lstat=document.getElementById('lstat'),lfill=document.getElementById('lfill');
+  d.oninput=()=>dv.textContent=d.value+'ms/char';
+  host.oninput=()=>{document.querySelector('.addr').textContent=host.value;};
+
+  // ---- line numbers ----
+  function updateGutter(){
+    const lines=t.value.split('\n').length;
+    let s='';for(let i=1;i<=lines;i++)s+=i+'\n';
+    gutter.textContent=s;
+    gutter.scrollTop=t.scrollTop;
+  }
+  t.addEventListener('input',updateGutter);
+  t.addEventListener('scroll',()=>{gutter.scrollTop=t.scrollTop;});
+  // Tab inserts a real tab instead of moving focus
+  t.addEventListener('keydown',e=>{
+    if(e.key==='Tab'){
+      e.preventDefault();
+      const s=t.selectionStart,end=t.selectionEnd;
+      t.value=t.value.slice(0,s)+'\t'+t.value.slice(end);
+      t.selectionStart=t.selectionEnd=s+1;
+      updateGutter();
+    }
+  });
+  updateGutter();
+
+  // ---- LCD mirror animation ----
+  function animate(text,delay){
+    return new Promise(async res=>{
+      const total=text.split('\n').length,n=text.length;let typed=0,curLine=1;
+      lstat.textContent='Line 1/'+total;lfill.style.width='0%';
+      for(let i=0;i<n;i++){
+        await new Promise(r=>setTimeout(r,Math.max(2,delay)));typed++;
+        if(text[i]==='\n'){curLine++;lstat.textContent='Line '+curLine+'/'+total;lfill.style.width=Math.round(typed*100/n)+'%';}
+      }
+      lfill.style.width='100%';lstat.textContent='Done: '+n+' chars';res();
+    });
+  }
+
+  b.onclick=async()=>{
+    const text=t.value;
+    if(!text){status.textContent='Nothing to send.';return;}
+    const addr=host.value.trim()||'esptype.local';
+    const delay=+d.value;
+    b.disabled=true;
+    status.textContent='Sending '+text.length+' chars to '+addr+' ...';
+    try{
+      fetch('http://'+addr+'/type',{
+        method:'POST',mode:'no-cors',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({text,delay})   // preserves tabs, spaces, newlines, symbols
+      }).catch(()=>{});
+    }catch(e){}
+    await animate(text,delay);
+    status.textContent='Sent to '+addr+'. If nothing typed: check the device address and that it is powered.';
+    b.disabled=false;
+  };
+</script>
+</body>
+</html>

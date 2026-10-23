@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Typer Preview</title>
+<style>
+  :root{
+    --bg:#0e0f12; --panel:#15171c; --border:#2a2d35; --txt:#e7e9ee;
+    --muted:#9aa1ad; --accent:#3b82f6;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);
+    display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;width:360px;max-width:92vw}
+  h1{font-size:15px;margin:0 0 4px}
+  .tag{font-size:12px;color:var(--muted);margin-bottom:14px}
+  textarea{width:100%;height:200px;background:#0b0c0f;color:var(--txt);border:1px solid var(--border);
+    border-radius:8px;padding:10px;font-size:14px;resize:vertical}
+  .row{display:flex;align-items:center;gap:10px;margin:12px 0}
+  label{font-size:13px;color:var(--muted)}
+  input[type=range]{flex:1;accent-color:var(--accent)}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:12px;font-size:15px;cursor:pointer;flex:1}
+  button:disabled{opacity:.5;cursor:default}
+  #status{min-height:18px;font-size:13px;color:var(--muted);margin-top:4px}
+
+  /* ---- Simulated 160x80 LCD ---- */
+  .lcdwrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .bezel{background:#000;border:6px solid #23262e;border-radius:10px;padding:8px}
+  .lcd{width:320px;height:160px;background:#000;position:relative;
+    font-family:"Courier New",monospace;overflow:hidden;image-rendering:pixelated}
+  .lcd .bar{position:absolute;left:0;right:0;top:0;height:26px;background:#0b4 fallback;background:#0b48c4;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;letter-spacing:1px}
+  .lcd .addr{position:absolute;left:4px;top:34px;color:#22d3ee;font-size:15px}
+  .lcd .ip{position:absolute;left:4px;top:54px;color:#28d17c;font-size:15px}
+  .lcd .stat{position:absolute;left:4px;top:82px;color:#ffe14d;font-size:24px;font-weight:700}
+  .lcd .pbox{position:absolute;left:4px;right:4px;top:122px;height:28px;border:2px solid #fff}
+  .lcd .pfill{position:absolute;left:2px;top:2px;bottom:2px;width:0;background:#0b48c4;transition:width .05s linear}
+  .note{font-size:12px;color:var(--muted);max-width:320px;text-align:center}
+</style>
+</head>
+<body>
+
+  <!-- Web UI (what you open in a browser) -->
+  <div class="card">
+    <h1>ESP32 Keystroke Typer</h1>
+    <div class="tag">Browser page served at http://esptype.local</div>
+    <textarea id="t" placeholder="Paste or type text here...">Line one of the demo
+Line two goes here
+Third and final line</textarea>
+    <div class="row">
+      <label>Speed</label>
+      <input type="range" id="d" min="0" max="40" value="8">
+      <span id="dv" style="color:var(--muted);font-size:13px">8ms/char</span>
+    </div>
+    <div class="row"><button id="b">Send to PC</button></div>
+    <div id="status">Make sure the target window is focused before sending.</div>
+  </div>
+
+  <!-- Simulated on-device LCD -->
+  <div class="lcdwrap">
+    <div class="bezel">
+      <div class="lcd">
+        <div class="bar">ESP32 Typer</div>
+        <div class="addr">esptype.local</div>
+        <div class="ip">192.168.1.57</div>
+        <div class="stat" id="lstat">Ready</div>
+        <div class="pbox"><div class="pfill" id="lfill"></div></div>
+      </div>
+    </div>
+    <div class="note">Simulated 0.96" 160&times;80 LCD. Shows the address, IP, and live line progress while typing.</div>
+  </div>
+
+<script>
+  const t=document.getElementById('t'), d=document.getElementById('d'), dv=document.getElementById('dv');
+  const b=document.getElementById('b'), status=document.getElementById('status');
+  const lstat=document.getElementById('lstat'), lfill=document.getElementById('lfill');
+  d.oninput=()=>dv.textContent=d.value+'ms/char';
+
+  b.onclick=async()=>{
+    const text=t.value;
+    if(!text){status.textContent='Nothing to send.';return;}
+    b.disabled=true;
+    const delay=Math.max(2,+d.value);
+    const lines=text.split('\n');
+    const total=lines.length, n=text.length;
+    status.textContent='Typing '+n+' chars... watch the LCD.';
+    let typed=0, curLine=1;
+    lstat.textContent='Line 1/'+total; lfill.style.width='0%';
+    for(let i=0;i<n;i++){
+      await new Promise(r=>setTimeout(r,delay));
+      typed++;
+      if(text[i]==='\n'){
+        curLine++;
+        lstat.textContent='Line '+curLine+'/'+total;
+        lfill.style.width=Math.round(typed*100/n)+'%';
+      }
+    }
+    lfill.style.width='100%';
+    lstat.textContent='Done '+n+'c';
+    status.textContent='Typed '+n+' characters.';
+    b.disabled=false;
+  };
+</script>
+</body>
+</html>
