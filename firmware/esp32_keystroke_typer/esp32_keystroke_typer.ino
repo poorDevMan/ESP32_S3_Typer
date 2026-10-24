@@ -140,26 +140,285 @@ void drawStatus(const String& msg, int pct, int ts = 2) {
 }
 
 // ---------- Typing ----------
-void typeText(const String& text, int d) {
-  if (d < 0) d = 0;
-  int totalLines = 1;
-  for (size_t i = 0; i < text.length(); i++) if (text[i] == '\n') totalLines++;
+// Per line: Home,Home -> type content -> Shift+End,Delete (removes the target
+// editor's auto-indent) -> Enter -> wait for auto-indent. Prevents cascading indents.
+void tapKey(uint8_t k) { Keyboard.press(k); Keyboard.release(k); }
+void goHome() { tapKey(KEY_HOME); delay(60); tapKey(KEY_HOME); delay(60); }
+void clearRight() {
+  Keyboard.press(KEY_LEFT_SHIFT);
+  tapKey(KEY_END);
+  Keyboard.release(KEY_LEFT_SHIFT);
+  delay(60);
+  tapKey(KEY_DELETE);
+  Keyboard.releaseAll();
+  delay(60);
+}
 
+void typeText(const char* text, size_t n, int d) {
+  if (d < 0) d = 0;
+  const char* p = text;
+  const char* end = text + n;
+  int totalLines = 1;
+  for (const char* q = p; q < end; q++) if (*q == '\n') totalLines++;
   int curLine = 1;
-  size_t n = text.length();
   drawStatus("Line 1/" + String(totalLines), 0);
 
-  for (size_t i = 0; i < n; i++) {
-    Keyboard.write(text[i]);     // '\n' -> Enter, '\t' -> Tab
-    delay(d);
-    if (text[i] == '\n') {
+  goHome();
+  clearRight();
+  delay(20);
+
+  bool first = true;
+  while (p < end) {
+    if (!first) goHome();
+    first = false;
+    while (p < end && *p != '\n') {
+      if (*p != '\r') { Keyboard.write(*p); delay(d); }
+      p++;
+    }
+    if (p < end && *p == '\n') {
+      clearRight();
+      Keyboard.write('\n');
+      p++;
+      delay(250);                       // let the editor auto-indent
       curLine++;
-      int pct = (int)((i + 1) * 100 / (n == 0 ? 1 : n));
+      int pct = (int)((p - text) * 100 / (n == 0 ? 1 : n));
       drawStatus("Line " + String(curLine) + "/" + String(totalLines), pct);
     }
   }
+  Keyboard.releaseAll();
   drawStatus("Done: " + String(n) + " chars", 100, 1);
 }
+
+const char BOOT_TEXT[] PROGMEM = R"BOOT(' Switch 2 / SmileBASIC 4.4.9 bootstrap. See README before RUN.
+' Addresses are rediscovered; headers, native code and the SDK CRC are checked.
+' REMOVE is issued once from Direct mode after RUN; its handled error is expected.
+' START verifies the bootstrap, connects to the computer and runs the demo.
+
+VAR NSR,B#,C#,T#,SH#,S#,M#,D#,G#,MM#,H$,QF$,GH$,DP$,CP$
+VAR PHASE=0,FD=-1,POOL#=0,ZERO$=CHR$(0),I
+FOR I=1 TO 18:ZERO$=ZERO$+ZERO$:NEXT
+NSR=ARRAY$(4)
+COPY NSR[0],0,"0000":COPY NSR[1],0,"1111"
+COPY NSR[2],0,"2222":COPY NSR[3],0,"3333"
+PRINT "DIST BOOT READY",1015
+END
+COMMON DEF P$(V#)
+ VAR S$="",J
+ FOR J=0 TO 3
+  S$=S$+CHR$(V#-FLOOR(V#/65536)*65536):V#=FLOOR(V#/65536)
+ NEXT
+ RETURN S$
+END
+COMMON DEF U#(S$)
+ VAR V#=0,J
+ FOR J=3 TO 0 STEP -1:V#=V#*65536+ASC(MID$(S$,J,1)):NEXT
+ RETURN V#
+END
+COMMON DEF HASH#(S$)
+ VAR V#=0,J
+ FOR J=0 TO LEN(S$)-1
+  V#=V#*65599+ASC(MID$(S$,J,1))
+  V#=V#-FLOOR(V#/2147483647)*2147483647
+ NEXT
+ RETURN V#
+END
+COMMON DEF PTR(V#,A)
+ RETURN V#>0 && V#<549755813888 && V#==FLOOR(V#/A)*A
+END
+COMMON DEF FAIL(N)
+ PHASE=-1:PRINT "BOOT FAILED",N:RETURN 0
+END
+COMMON DEF DUMP S$
+ VAR J
+ FOR J=0 TO LEN(S$)-1
+  PRINT HEX$(ASC(MID$(S$,J,1)),4);
+  IF (J AND 3)==3 THEN PRINT
+ NEXT
+END
+COMMON DEF W$(A#,N)
+ VAR S$
+ COPY NSR[2],0,P$(A#)+P$(N/2)
+ S$=COPY(NSR[0],0,N/2):COPY NSR[2],0,H$
+ RETURN S$
+END
+COMMON DEF PUT O,V#
+ COPY NSR[1],O/2,P$(V#)
+END
+COMMON DEF CALL#(F,A#,B#,C#,E#)
+ RETURN RAW#(P$(D#+F)+P$(A#)+P$(B#)+P$(C#)+P$(E#))
+END
+COMMON DEF RAW#(V$)
+ COPY NSR[1],126976,QF$
+ COPY NSR[1],1036,V$,0,4
+ COPY NSR[1],127004,V$,4,4
+ COPY NSR[1],127120,V$,8,4
+ COPY NSR[1],127128,V$,12,8
+ COPY NSR[2],0,GH$:COPY NSR[0],0,DP$
+ COPY NSR[1],128,CP$:COPY NSR[2],0,H$
+ RETURN U#(COPY(NSR[1],8216,4))
+END
+COMMON DEF BOOT()
+ VAR V$,Q$,J,V#,L#,K#=0,FOUND=0,KH#,NATIVE#,CRC#,R#,ATTEMPT
+ IF PHASE!=0 THEN RETURN FAIL(1)
+ PHASE=1
+ V$=COPY(NSR[0],0,16)
+ FOR J=0 TO 3
+  V#=U#(MID$(V$,J*4,4))
+  IF !PTR(V#,16) THEN RETURN FAIL(2)
+  IF J>0 && (V#<=U#(MID$(V$,(J-1)*4,4)) || V#-U#(LEFT$(V$,4))>=4096) THEN RETURN FAIL(3)
+ NEXT
+ B#=U#(LEFT$(V$,4)):C#=U#(MID$(V$,8,4))+16:T#=U#(MID$(V$,12,4))+16
+ H$=P$(T#)+P$(4):COPY NSR[2],0,H$:COPY NSR[0],0,P$(C#)
+ IF LEN(NSR[0])!=4 || NSR[0]!=NSR[3] || NSR[3]!="2222" THEN RETURN FAIL(4)
+ COPY NSR[0],1,"9"
+ IF NSR[3]!="2922" THEN RETURN FAIL(5)
+ COPY NSR[0],1,"2"
+ IF NSR[3]!="2222" THEN RETURN FAIL(6)
+ Q$=COPY(ZERO$,0,2048)
+ FOR ATTEMPT=0 TO 2
+  NSR[1]=KEY(2):COPY NSR[2],0,P$(B#+8)+P$(4):KH#=U#(NSR[0]):COPY NSR[2],0,H$
+  IF !PTR(KH#,16) THEN RETURN FAIL(10)
+  COPY NSR[2],0,P$(FLOOR(KH#/4096)*4096)+P$(2048)
+  COPY Q$,MIN(0,LEN(KEY(1)),LEN(KEY(2))),NSR[0]:COPY NSR[2],0,H$
+  FOR J=0 TO 2040 STEP 8
+   V#=U#(MID$(Q$,J,4)):L#=U#(MID$(Q$,J+4,4))
+   IF L#==5 && PTR(V#-&H9DB49C,4096) THEN
+    IF K#!=V# THEN K#=V#:FOUND=FOUND+1
+   ENDIF
+  NEXT
+  IF FOUND!=0 THEN BREAK
+ NEXT
+ IF FOUND!=1 THEN RETURN FAIL(11)
+ M#=K#-&H9DB49C
+ IF W$(K#,10)!=KEY(2) THEN RETURN FAIL(12)
+ IF U#(W$(FLOOR(K#/4096)*4096+&H170,8))!=M#+&H3854D0 THEN RETURN FAIL(13)
+ IF HASH#(W$(M#,128))!=2137937599 THEN RETURN FAIL(14)
+ Q$=W$(M#+&H9C9298,128):MM#=U#(MID$(Q$,44,4))
+ D#=MM#-&H5872F0:G#=M#+&H9C92F0
+ IF !PTR(D#,4096) || U#(MID$(Q$,40,4))!=D#+&H586FB0 THEN RETURN FAIL(15)
+ IF HASH#(W$(D#,128))!=1437608693 THEN RETURN FAIL(16)
+ IF HASH#(W$(D#+1242644,120))!=943625752 THEN RETURN FAIL(20)
+ IF HASH#(W$(D#+1178912,16))!=1012566187 THEN RETURN FAIL(21)
+ IF HASH#(W$(D#+310672,24))!=236409839 THEN RETURN FAIL(22)
+ IF HASH#(W$(D#+3378856,56))!=260441352 THEN RETURN FAIL(23)
+ IF HASH#(W$(D#+1621008,16))!=2075897594 THEN RETURN FAIL(24)
+ IF HASH#(W$(D#+202056,52))!=1662332171 THEN RETURN FAIL(25)
+ IF HASH#(W$(D#+5796592,380))!=1057474404 THEN RETURN FAIL(26)
+ IF HASH#(W$(D#+1409812,24))!=1911277185 THEN RETURN FAIL(27)
+ IF HASH#(W$(D#+463632,512))!=301599630 THEN RETURN FAIL(28)
+ NSR[1]=CHR$(0):FOR J=1 TO 18:NSR[1]=NSR[1]+NSR[1]:NEXT
+ SH#=U#(W$(B#+8,8))
+ IF !PTR(SH#,16) THEN RETURN FAIL(7)
+ Q$=W$(SH#,16):S#=U#(LEFT$(Q$,4))
+ IF !PTR(S#,16) || U#(MID$(Q$,4,4))!=262144 THEN RETURN FAIL(8)
+ H$=P$(S#)+P$(4):COPY NSR[2],0,H$
+ IF NSR[0]!=LEFT$(ZERO$,4) THEN RETURN FAIL(9)
+ PUT 552,S#+&H900
+ PUT 2072,D#+&H5872F0
+ PUT 2176,S#+&H7B0
+ PUT 2336,D#+&H12F614
+ PUT 16432,1
+ PUT 253960,MM#
+ PUT 253968,G#
+ PUT 253976,S#+&H880
+ PUT 254008,S#+&H4040
+ PUT 254048,D#+&H11FD20
+ PUT 254200,D#+&H4BD90
+ PUT 254232,D#+&H338EA8
+ PUT 254240,S#+&H4080
+ PUT 254256,32
+ PUT 254264,0
+ PUT 254440,D#+&H18BC10
+ PUT 254496,S#+&H100
+ PUT 254504,S#+&H4030
+ PUT 254520,D#+&H31548
+ PUT 254528,S#+&H200
+ IF W$(S#+552,8)!=P$(S#+&H900) THEN RETURN FAIL(39)
+ IF W$(S#+2072,8)!=P$(D#+&H5872F0) THEN RETURN FAIL(39)
+ IF W$(S#+2176,8)!=P$(S#+&H7B0) THEN RETURN FAIL(39)
+ IF W$(S#+2336,8)!=P$(D#+&H12F614) THEN RETURN FAIL(39)
+ IF W$(S#+16432,8)!=P$(1) THEN RETURN FAIL(39)
+ IF W$(S#+253960,8)!=P$(MM#) THEN RETURN FAIL(39)
+ IF W$(S#+253968,8)!=P$(G#) THEN RETURN FAIL(39)
+ IF W$(S#+253976,8)!=P$(S#+&H880) THEN RETURN FAIL(39)
+ IF W$(S#+254008,8)!=P$(S#+&H4040) THEN RETURN FAIL(39)
+ IF W$(S#+254048,8)!=P$(D#+&H11FD20) THEN RETURN FAIL(39)
+ IF W$(S#+254200,8)!=P$(D#+&H4BD90) THEN RETURN FAIL(39)
+ IF W$(S#+254232,8)!=P$(D#+&H338EA8) THEN RETURN FAIL(39)
+ IF W$(S#+254240,8)!=P$(S#+&H4080) THEN RETURN FAIL(39)
+ IF W$(S#+254256,8)!=P$(32) THEN RETURN FAIL(39)
+ IF W$(S#+254264,8)!=P$(0) THEN RETURN FAIL(39)
+ IF W$(S#+254440,8)!=P$(D#+&H18BC10) THEN RETURN FAIL(39)
+ IF W$(S#+254496,8)!=P$(S#+&H100) THEN RETURN FAIL(39)
+ IF W$(S#+254504,8)!=P$(S#+&H4030) THEN RETURN FAIL(39)
+ IF W$(S#+254520,8)!=P$(D#+&H31548) THEN RETURN FAIL(39)
+ IF W$(S#+254528,8)!=P$(S#+&H200) THEN RETURN FAIL(39)
+ QF$=COPY(NSR[1],126976,296)
+ IF W$(S#+&H3E000,592)!=QF$ THEN RETURN FAIL(40)
+ GH$=P$(G#)+P$(4):DP$=P$(D#+&H12F614):CP$=P$(S#+&H3E000)
+ COPY NSR[1],&H2040,"NS2DISTCHECK1234"
+ R#=CALL#(&H5872F0,S#+&H4040,S#+&H4080,32,0)
+ IF R#!=S#+&H4040 || COPY(NSR[1],&H2020,16)!="NS2DISTCHECK1234" THEN RETURN FAIL(41)
+ IF U#(W$(G#,8))!=MM# || NSR[0]!=LEFT$(ZERO$,4) THEN RETURN FAIL(42)
+ R#=CALL#(&H158314,S#+&H4100,S#+&H4140,D#,0)
+ Q$=COPY(NSR[1],&H2080,32)
+ IF R#!=0 || U#(LEFT$(Q$,4))!=D# || U#(MID$(Q$,4,4))!=6164480 THEN RETURN FAIL(43)
+ IF U#(MID$(Q$,8,4))!=3 || U#(MID$(Q$,12,4))!=5 THEN RETURN FAIL(44)
+ CRC#=CALL#(463632,0,D#,6164480,0)
+ IF CRC#!=3925528160 THEN RETURN FAIL(45)
+ PHASE=2:CLS:PRINT "BINDINGS"
+ DUMP P$(B#)+P$(C#)+P$(T#)+P$(SH#)+P$(S#)+P$(M#)+P$(D#)+P$(G#)+P$(MM#)
+ PRINT "BOOT OK",CRC#:RETURN 1
+END
+COMMON DEF START(PORT,A,B,C,D,T0#,T1#,T2#,T3#)
+ VAR R#,J,A$,HELLO$
+ IF !BOOT() THEN RETURN 0
+ IF PHASE!=2 OR PORT<1024 OR PORT>65535 THEN RETURN FAIL(50)
+ IF MIN(A,B,C,D)<0 OR MAX(A,B,C,D)>255 THEN RETURN FAIL(50)
+ PHASE=3
+ IF CALL#(&H144DE0,0,0,0,0)==0 THEN
+  IF CALL#(&H577710,S#+&H5100,4096,&H400000,0)!=0 THEN RETURN FAIL(52)
+  POOL#=U#(COPY(NSR[1],&H2880,4))
+  IF !PTR(POOL#,4096) THEN RETURN FAIL(53)
+  IF CALL#(&H1453E0,POOL#,&H400000,&H80000,4)!=0 THEN RETURN FAIL(54)
+ ENDIF
+ IF CALL#(&H3904A0,0,0,0,0)!=0 THEN RETURN FAIL(55)
+ R#=CALL#(&H391650,1,0,0,0):R#=CALL#(&H391480,0,0,0,0)
+ FOR J=0 TO 3599
+  R#=CALL#(&H3915B0,0,0,0,0):IF R#==1 THEN BREAK
+  VSYNC
+ NEXT
+ IF R#!=1 THEN RETURN FAIL(56)
+ FD=CALL#(&H14A210,2,1,0,0)
+ IF FD<0 OR FD>4095 THEN RETURN FAIL(57)
+ A$=CHR$(&H210)+CHR$(FLOOR(PORT/256)+(PORT MOD 256)*256)+CHR$(A+B*256)+CHR$(C+D*256)+P$(0)
+ COPY NSR[1],&H2900,A$
+ IF CALL#(&H147AF0,FD,S#+&H5200,16,0)!=0 THEN RETURN FAIL(58)
+ HELLO$=P$(&H31545344)+P$(1)+P$(2)+P$(S#)+P$(&H80000)+P$(M#)+P$(D#)+P$(G#)+P$(MM#)+P$(B#)+P$(C#)
+ HELLO$=HELLO$+P$(T0#)+P$(T1#)+P$(T2#)+P$(T3#)+P$(3925528160)
+ COPY NSR[1],&H2A00,HELLO$
+ IF CALL#(&H140BD0,FD,S#+&H5400,128,0)!=128 THEN RETURN FAIL(59)
+ PHASE=4:PRINT "HOST CONNECTED":RETURN RPC()
+END
+COMMON DEF RPC()
+ VAR R#,V$,FIRST$,LAST$
+ IF PHASE!=4 THEN RETURN FAIL(60)
+ PHASE=5:PRINT "RPC RUNNING"
+ WHILE 1
+  R#=CALL#(&H140B90,FD,S#+&H40000,&H8080,&H40)
+  IF R#!=&H8080 THEN BREAK
+  V$=COPY(NSR[1],&H20000,40)
+  IF LEFT$(V$,20)==CHR$(0)*20 THEN BREAK
+  R#=RAW#(LEFT$(V$,20))
+  FIRST$=COPY(NSR[1],8216,4)
+  R#=RAW#(MID$(V$,20,20))
+  COPY NSR[1],8220,FIRST$
+  R#=CALL#(&H140BD0,FD,S#+&H4030,&H8010,0)
+  IF R#!=&H8010 THEN BREAK
+ WEND
+ PHASE=6:PRINT "RPC STOP",R#:RETURN 1
+END
+)BOOT";
 
 // ---------- Web pages ----------
 const char TYPER_HTML[] PROGMEM = R"HTML(
@@ -208,10 +467,10 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
  t.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=t.selectionStart,x=t.selectionEnd;t.value=t.value.slice(0,s)+'\t'+t.value.slice(x);t.selectionStart=t.selectionEnd=s+1;gut();}});
  gut();
  function clr(){t.value='';gut();document.getElementById('status').textContent='Cleared.';t.focus();}
- async function tx(v){
+ async function tx(v,u){
    const s=document.getElementById('status'),bs=document.querySelectorAll('button');
-   bs.forEach(x=>x.disabled=true);s.textContent='Typing '+v.length+' chars... watch the screen.';
-   try{const r=await fetch('/type',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({text:v,delay:d.value})});s.textContent=await r.text();}
+   bs.forEach(x=>x.disabled=true);s.textContent=u?'Typing bootstrap... watch the screen.':'Typing '+v.length+' chars... watch the screen.';
+   try{const r=await fetch(u||'/type',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({text:v,delay:d.value})});s.textContent=await r.text();}
    catch(e){s.textContent='Error: '+e;}
    bs.forEach(x=>x.disabled=false);
  }
@@ -222,12 +481,13 @@ const char TYPER_HTML[] PROGMEM = R"HTML(
  function mk(c,n,v,e){const b=document.createElement('button');b.className='sec';b.textContent=n;b.onclick=()=>tx(v+(e?'\n':''));c.appendChild(b);}
  function rb(){const c=document.getElementById('cb'),c2=document.getElementById('cb2');c.innerHTML=c2.innerHTML='';
    CB.forEach(x=>mk(c,x[0],x[1],1));
-   cu.forEach((x,i)=>{const h=i<1?c:c2;mk(h,x.n,x.t,x.e);const r=document.createElement('button');r.className='sec x';r.textContent='x';r.title='Delete';r.onclick=()=>{cu.splice(i,1);sv();rb();};h.appendChild(r);});
-   if(cu.length<5){const a=document.createElement('button');a.className='sec';a.textContent='+ Custom';a.onclick=()=>{const f=document.getElementById('cf');f.style.display=f.style.display==='flex'?'none':'flex';};(cu.length<1?c:c2).appendChild(a);}}
+   const bb=document.createElement('button');bb.className='sec';bb.textContent='BOOTSTRAP';bb.onclick=()=>tx('','/boot');c.appendChild(bb);
+   cu.forEach((x,i)=>{mk(c2,x.n,x.t,x.e);const r=document.createElement('button');r.className='sec x';r.textContent='x';r.title='Delete';r.onclick=()=>{cu.splice(i,1);sv();rb();};c2.appendChild(r);});
+   if(cu.length<4){const a=document.createElement('button');a.className='sec';a.textContent='+ Custom';a.onclick=()=>{const f=document.getElementById('cf');f.style.display=f.style.display==='flex'?'none':'flex';};c2.appendChild(a);}}
  function ad(){const n=document.getElementById('cn'),x=document.getElementById('ct'),e=document.getElementById('ce');
-   if(!n.value||!x.value||cu.length>=5)return;cu.push({n:n.value,t:x.value,e:e.checked});sv();n.value=x.value='';document.getElementById('cf').style.display='none';rb();}
+   if(!n.value||!x.value||cu.length>=4)return;cu.push({n:n.value,t:x.value,e:e.checked});sv();n.value=x.value='';document.getElementById('cf').style.display='none';rb();}
  rb();
- fetch('/custom').then(r=>r.json()).then(j=>{if(Array.isArray(j)){cu=j;rb();}}).catch(()=>{});
+ fetch('/custom').then(r=>r.json()).then(j=>{if(Array.isArray(j)){cu=j.slice(0,4);rb();}}).catch(()=>{});
 </script></body></html>
 )HTML";
 
@@ -320,8 +580,15 @@ void handleType() {
   if (!server.hasArg("text")) { server.send(400, "text/plain", "no text"); return; }
   String text = server.arg("text");
   int d = server.hasArg("delay") ? server.arg("delay").toInt() : defaultDelayMs;
-  typeText(text, d);
+  typeText(text.c_str(), text.length(), d);
   server.send(200, "text/plain", "Typed " + String(text.length()) + " characters.");
+}
+
+void handleBoot() {
+  int d = server.hasArg("delay") ? server.arg("delay").toInt() : defaultDelayMs;
+  size_t n = strlen(BOOT_TEXT);
+  typeText(BOOT_TEXT, n, d);
+  server.send(200, "text/plain", "Typed bootstrap (" + String(n) + " characters).");
 }
 
 void handleCustomGet() {
@@ -433,6 +700,7 @@ void setup() {
   server.on("/wifi", handleWifiPage);
   server.on("/scan", handleScan);
   server.on("/type", HTTP_POST, handleType);
+  server.on("/boot", HTTP_POST, handleBoot);
   server.on("/custom", HTTP_GET, handleCustomGet);
   server.on("/custom", HTTP_POST, handleCustomSave);
   server.on("/save", HTTP_POST, handleSave);
